@@ -458,6 +458,7 @@ async function fetchAll(manual=false) {
       const s=m.score;
       const r={date:fmtDate(m.date),home:n(m.team1),homeGoals:s.ft[0],awayGoals:s.ft[1],away:n(m.team2)};
       if(s.p) r.pens={home:s.p[0],away:s.p[1]};
+      if(s.et&&(s.et[0]!==s.ft[0]||s.et[1]!==s.ft[1])) r.et={home:s.et[0],away:s.et[1]};
       return r;
     }).sort((a,b)=>parseDate(a.date)-parseDate(b.date)||a.home.localeCompare(b.home));
     const newUpcoming = unplayed.map(m=>({
