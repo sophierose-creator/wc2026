@@ -172,7 +172,7 @@ const PLAYER_COLORS = {
   "Cathy G":  "#b2bec3",
 };
 
-const MEDALS = ["🥇","🥈"];
+const MEDALS = ["🥇","🥈","🥉"];
 const KNOCKOUT_START = new Date(Date.UTC(2026,5,28));
 const MONTHS = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
 
@@ -333,7 +333,7 @@ function renderLeaderboard() {
       const c = PLAYER_COLORS[p.name] || "#aaa";
       return `<div class="player-card ${isTop?'leader':''} ${isOpen?'open':''}" onclick="toggle('${p.name}')">
         <div class="player-row">
-          <div class="rank ${rank<=3?'medal':''}">${rank<=3?MEDALS[rank-1]:rank}</div>
+          <div class="rank ${rank<=2?'medal':''}">${rank<=2?MEDALS[rank-1]:rank}</div>
           <div class="player-info">
             <div class="player-name" style="color:${c}">${p.name}</div>
             <div class="player-teams">${activeTeams.join(' · ') || 'All teams eliminated'}</div>
