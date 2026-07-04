@@ -173,7 +173,6 @@ const PLAYER_COLORS = {
 };
 
 const MEDALS = ["🥇","🥈","🥉"];
-const KNOCKOUT_START = new Date(Date.UTC(2026,5,28));
 const MONTHS = {Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12};
 
 function parseDate(str){
@@ -220,8 +219,9 @@ function calcTeamScores() {
   for (const teams of Object.values(PLAYERS))
     for (const t of teams) scores[n(t)] = 0;
 
+  const _KO_START = new Date(Date.UTC(2026,5,28));
   for (const r of results) {
-    const isKnockout = parseDate(r.date) >= KNOCKOUT_START;
+    const isKnockout = parseDate(r.date) >= _KO_START;
     const mult = isKnockout ? 2 : 1;
     const gd = r.homeGoals - r.awayGoals;
 
@@ -264,7 +264,7 @@ function calcEliminated() {
   const knockoutResults = [];
   for (const r of results) {
     const d = parseDate(r.date);
-    if (d >= KNOCKOUT_START) knockoutResults.push(r);
+    if (d >= new Date(Date.UTC(2026,5,28))) knockoutResults.push(r);
     else {
       gamesPlayed[r.home] = (gamesPlayed[r.home]||0)+1;
       gamesPlayed[r.away] = (gamesPlayed[r.away]||0)+1;
@@ -391,8 +391,50 @@ function renderResults() {
   document.getElementById("match-count").textContent = results.length;
 }
 
+// Calculate win probability for each team based on tournament performance
+function calcTeamStrengths() {
+  const st = {};
+  for (const r of results) {
+    if (!st[r.home]) st[r.home] = {gf:0,ga:0,w:0,d:0,l:0,played:0,knockoutWins:0};
+    if (!st[r.away]) st[r.away] = {gf:0,ga:0,w:0,d:0,l:0,played:0,knockoutWins:0};
+  }
+  const KO_START = new Date(Date.UTC(2026,5,28));
+  for (const r of results) {
+    const isKO = parseDate(r.date) >= KO_START;
+    const hg = r.et ? r.et.home : r.homeGoals;
+    const ag = r.et ? r.et.away : r.awayGoals;
+    let homeWin, awayWin;
+    if (r.pens) { homeWin = r.pens.home > r.pens.away; awayWin = !homeWin; }
+    else { homeWin = hg > ag; awayWin = ag > hg; }
+    st[r.home].gf+=hg; st[r.home].ga+=ag; st[r.home].played++;
+    st[r.away].gf+=ag; st[r.away].ga+=hg; st[r.away].played++;
+    if (homeWin) { st[r.home].w++; st[r.away].l++; if(isKO) st[r.home].knockoutWins++; }
+    else if (awayWin) { st[r.away].w++; st[r.home].l++; if(isKO) st[r.away].knockoutWins++; }
+    else { st[r.home].d++; st[r.away].d++; }
+  }
+  const scores = {};
+  for (const [team, s] of Object.entries(st)) {
+    if (s.played === 0) { scores[team] = 0; continue; }
+    const gfRate = s.gf / s.played;
+    const gaRate = s.ga / s.played;
+    const defScore = gaRate === 0 ? 3 : 1 / gaRate;
+    scores[team] = (gfRate * 2) + defScore + (s.w * 3) + (s.knockoutWins * 5);
+    if (eliminated.has(team)) scores[team] = 0;
+  }
+  return scores;
+}
+
+function calcMatchOdds(home, away, strengths) {
+  const hs = strengths[home] || 0.1;
+  const as = strengths[away] || 0.1;
+  if (hs === 0 && as === 0) return null;
+  const homeWin = Math.round(hs / (hs + as) * 100);
+  return { home: homeWin, away: 100 - homeWin };
+}
+
 function renderUpcoming() {
   const tp = buildTeamPlayers();
+  const strengths = calcTeamStrengths();
   const byDate = {};
   for (const m of upcoming) (byDate[m.date]=byDate[m.date]||[]).push(m);
   if (!upcoming.length) {
@@ -407,10 +449,16 @@ function renderUpcoming() {
         ${games.map(m => {
           const hP = tp[m.home]||[], aP = tp[m.away]||[];
           const interest = hP.length||aP.length;
+          const hTags = hP.map(p=>`<span class="player-tag" style="background:${PLAYER_COLORS[p]}22;color:${PLAYER_COLORS[p]};border:1px solid ${PLAYER_COLORS[p]}55">${p}</span>`).join("");
+          const aTags = aP.map(p=>`<span class="player-tag" style="background:${PLAYER_COLORS[p]}22;color:${PLAYER_COLORS[p]};border:1px solid ${PLAYER_COLORS[p]}55">${p}</span>`).join("");
+          const odds = calcMatchOdds(m.home, m.away, strengths);
+          const hOdds = odds ? '<div style="font-size:11px;font-weight:700;color:#f7dc6f;margin-top:3px">'+odds.home+'%</div>' : '';
+          const aOdds = odds ? '<div style="font-size:11px;font-weight:700;color:#f7dc6f;margin-top:3px">'+odds.away+'%</div>' : '';
           return `<div class="match-row ${interest?'interest':''}">
             <div style="flex:1;text-align:right">
               <div class="match-team home ${eliminated.has(m.home)?'out':''}">${m.home}</div>
-              ${hP.length?`<div class="player-tags" style="text-align:right">${hP.map(p=>`<span class="player-tag" style="background:${PLAYER_COLORS[p]}22;color:${PLAYER_COLORS[p]};border:1px solid ${PLAYER_COLORS[p]}55">${p}</span>`).join("")}</div>`:''}
+              ${hTags?`<div class="player-tags" style="text-align:right">${hTags}</div>`:''}
+              ${hOdds}
             </div>
             <div style="text-align:center;flex-shrink:0;min-width:60px">
               <div class="vs-box">vs</div>
@@ -419,7 +467,8 @@ function renderUpcoming() {
             </div>
             <div style="flex:1">
               <div class="match-team ${eliminated.has(m.away)?'out':''}">${m.away}</div>
-              ${aP.length?`<div class="player-tags">${aP.map(p=>`<span class="player-tag" style="background:${PLAYER_COLORS[p]}22;color:${PLAYER_COLORS[p]};border:1px solid ${PLAYER_COLORS[p]}55">${p}</span>`).join("")}</div>`:''}
+              ${aTags?`<div class="player-tags">${aTags}</div>`:''}
+              ${aOdds}
             </div>
           </div>`;
         }).join("")}
